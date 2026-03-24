@@ -1,4 +1,4 @@
-package org.example;
+package org.pg.queue;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -14,11 +14,13 @@ public class PGQueue {
     private final Connection conn;
     private final int batchSize;
     private final String tableName;
-
-    public PGQueue(Connection conn, int batchSize, String tableName) {
+    private final String user;
+    
+    public PGQueue(Connection conn, int batchSize, String tableName, String user) {
         this.conn = conn;
         this.batchSize = batchSize;
         this.tableName = tableName;
+        this.user = user;
     }
 
     public List<DomainQueue> pollQueue(Status toProcess) throws SQLException {
@@ -31,10 +33,10 @@ public class PGQueue {
                     FOR UPDATE SKIP LOCKED
                 )
                 UPDATE %s
-                SET status = 2, updated_at = NOW()
+                SET status = 2, updated_at = NOW(), updated_by = '%s'
                 WHERE id = ANY(SELECT id FROM messages)
                 returning *;
-                """, tableName, toProcess.intValue(), batchSize, tableName));
+                """, tableName, toProcess.intValue(), batchSize, tableName, user));
 
         ResultSet rs = stmt.executeQuery();
 
@@ -43,15 +45,16 @@ public class PGQueue {
             long id = rs.getLong(1);
             int status = rs.getInt(2);
             Instant updatedAt = rs.getTimestamp(3).toInstant();
-            String payload = rs.getString(4);
-            messages.add(new DomainQueue(id, status, updatedAt, payload));
+            String updatedBy = rs.getString(4);
+            String payload = rs.getString(5);
+            messages.add(new DomainQueue(id, status, updatedAt, updatedBy, payload));
         }
         stmt.close();
         return messages;
     }
 
     public void commit(List<Long> ids) throws SQLException {
-        var sql = String.format("update domain_queue set status = 3, updated_at = NOW() where id IN (%s)", ids.stream()
+        var sql = String.format("update domain_queue set status = 3, updated_at = NOW(), updated_by = '%s' where id IN (%s)", user, ids.stream()
                 .map(v -> "?")
                 .collect(Collectors.joining(", ")));
         PreparedStatement preparedStatement = conn.prepareStatement(sql);

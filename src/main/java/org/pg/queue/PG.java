@@ -1,4 +1,4 @@
-package org.example;
+package org.pg.queue;
 
 import java.sql.Connection;
 import java.sql.DriverManager;
