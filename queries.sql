@@ -1,3 +1,4 @@
+-- status: 1 = pending, 2 = in progress, 3 = done
 CREATE TABLE public.domain_queue (
 id int8 GENERATED ALWAYS AS IDENTITY NOT NULL,
   	status int4 NOT NULL,
@@ -7,6 +8,7 @@ id int8 GENERATED ALWAYS AS IDENTITY NOT NULL,
   	CONSTRAINT domain_queue_pk PRIMARY KEY (id)
   );
 
+create index if not exists status_idx on domain_queue (status);
 
 DO
 $$
@@ -22,7 +24,7 @@ END;
 $$;
 
 
--- POLL batch with size N from queue
+-- POLL batch with size N=10 from queue
 -- status: 1 = pending, 2 = in progress, 3 = done
 WITH messages AS MATERIALIZED (
     SELECT * FROM domain_queue
@@ -34,7 +36,7 @@ WITH messages AS MATERIALIZED (
 UPDATE domain_queue
 SET status = 2, updated_at = NOW(), updated_by = 'koen'
 WHERE id = ANY(SELECT id FROM messages)
-returning *;
+RETURNING *;
 
 -- COMMIT batch with size N to queue
 UPDATE domain_queue SET status = 3, updated_at = NOW(), updated_by = 'koen' WHERE id in (1,2,3,4,5,6,7,8,9,10)

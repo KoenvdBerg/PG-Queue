@@ -1,7 +1,8 @@
 package org.pg.queue;
 
 import java.sql.Connection;
-import java.util.Arrays;
+import java.sql.SQLException;
+import java.util.Collections;
 import java.util.List;
 
 /**
@@ -16,7 +17,7 @@ import java.util.List;
  */
 public class Main {
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws SQLException, InterruptedException {
         int batchSize = 1000;
         String workerName = "tester";
         long pollInterval = 5000L;
@@ -33,27 +34,22 @@ public class Main {
 
         System.out.println("Starting worker with name=" + workerName + ", batch size=" + batchSize);
 
-        try {
-            Connection conn = PG.connect();
-            PGQueue pgQueue = new PGQueue(conn, batchSize, "domain_queue", workerName);
+        Connection conn = PG.connect();
+        PGQueue pgQueue = new PGQueue(conn, batchSize, "domain_queue", workerName);
 
-            // POLLING THE QUEUE
-            while (true) {
-                List<DomainQueue> messages = pgQueue.pollQueue(PGQueue.Status.PENDING);
-                if (messages.isEmpty()) {
-                    System.out.println("No messages left to process, now waiting " + pollInterval + " ms intervals");
-                    Thread.sleep(pollInterval);
-                } else {
-                    for (DomainQueue message : messages) {
-                        System.out.println("Now processing message with ID=" + message.id() + " and payload=" + message.payload());
-                    }
-                    Thread.sleep(100); // this is here as demonstration of "latency" of the work
-                    pgQueue.commit(messages.stream().map(DomainQueue::id).toList());
-                }
+        // POLLING THE QUEUE
+        while (true) {
+            List<DomainQueue> messages = pgQueue.pollQueue(PGQueue.Status.PENDING);
+            if (messages.isEmpty()) {
+                System.out.println("No messages left to process, now waiting " + pollInterval + " ms intervals");
+                Thread.sleep(pollInterval);
+            } else {
+                long min = Collections.min(messages.stream().map(DomainQueue::id).toList());
+                long max = Collections.max(messages.stream().map(DomainQueue::id).toList());
+                System.out.println("Now processing " + messages.size() + " messages with ID ranging from [" + min + ", " + max + "]");
+                Thread.sleep(100); // this is here as demonstration of "latency" of the work
+                pgQueue.commit(messages.stream().map(DomainQueue::id).toList());
             }
-
-        } catch (Exception e) {
-            System.out.println(Arrays.toString(e.getStackTrace()));
         }
     }
 }
